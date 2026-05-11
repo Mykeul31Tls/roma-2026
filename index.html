@@ -233,6 +233,24 @@ html, body { height: 100%; width: 100%; overflow: hidden; font-family: 'DM Sans'
   #title { font-size: 17px; }
   .hbtn { min-width: 60px; font-size: 11px; padding: 8px 9px; }
 }
+
+/* Labels permanents sur les lignes de transport */
+.line-label-icon { background: transparent !important; border: none !important; }
+.line-label {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.55);
+  letter-spacing: 0.3px;
+  line-height: 1.4;
+  opacity: 0.95;
+}
 </style>
 </head>
 <body>
@@ -667,15 +685,29 @@ function updateOpPanel() {
   opRowBus.classList.toggle('show', busLayer !== null);
 }
 
-// Applique l'opacite a toutes les polylignes d'un layerGroup
+// Applique l'opacite a toutes les polylignes et labels d'un layerGroup
 function setLayerGroupOpacity(group, v) {
   if (!group) return;
   group.eachLayer(function(l) {
-    if (l.setStyle) l.setStyle({ opacity: v, fillOpacity: v * 0.2 });
+    // Polyligne
+    if (l.setStyle) {
+      l.setStyle({ opacity: v, fillOpacity: v * 0.2 });
+    }
+    // Marker label : ajuste l'opacite via le style du span interne
+    if (l.getElement) {
+      var el = l.getElement();
+      if (el) el.style.opacity = v;
+    }
   });
 }
 
 // Charge les lignes depuis Overpass et retourne un layerGroup via callbacks
+// Renvoie le point median d'un tableau de coords [lat,lng]
+function midpoint(coords) {
+  if (!coords.length) return null;
+  return coords[Math.floor(coords.length / 2)];
+}
+
 function loadOverpassLines(query, colorFn, lineWeight, onSuccess, onError) {
   var url = OVERPASS_URL + '?data=' + encodeURIComponent(query);
   var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
@@ -695,21 +727,51 @@ function loadOverpassLines(query, colorFn, lineWeight, onSuccess, onError) {
       var drawn = 0;
       (data.elements || []).forEach(function(el) {
         if (el.type !== 'relation') return;
-        var ref = (el.tags && (el.tags.ref || el.tags.name)) || '';
-        var color = colorFn(ref);
+        var tags = el.tags || {};
+        // Libelle court (numero) et nom long pour le toast
+        var ref  = (tags.ref  || '').trim();
+        var name = (tags.name || tags['name:fr'] || tags['name:it'] || '').trim();
+        var displayRef  = ref  || name.substring(0, 6) || '?';
+        var displayName = name || ref || 'Ligne inconnue';
+        var color = colorFn(ref || name);
+
+        // Collecte tous les points de la relation pour trouver le midpoint
+        var allCoords = [];
         (el.members || []).forEach(function(m) {
           if (m.type === 'way' && m.geometry && m.geometry.length > 1) {
             var latlngs = m.geometry.map(function(p) { return [p.lat, p.lon]; });
+            allCoords = allCoords.concat(latlngs);
+            // Polyligne interactive : tap affiche nom dans toast
             L.polyline(latlngs, {
               color: color,
               weight: lineWeight,
               opacity: DEFAULT_OVERLAY_OPACITY,
               smoothFactor: 1,
-              interactive: false
+              interactive: true
+            }).on('click', function() {
+              toast(displayRef ? (displayRef + ' - ' + displayName) : displayName);
             }).addTo(group);
             drawn++;
           }
         });
+
+        // Label permanent au point median de la relation
+        if (allCoords.length) {
+          var mid = midpoint(allCoords);
+          var labelHtml = '<span class="line-label" style="background:' + color + '">' +
+            displayRef.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') +
+            '</span>';
+          L.marker(mid, {
+            icon: L.divIcon({
+              className: 'line-label-icon',
+              html: labelHtml,
+              iconAnchor: [0, 0]
+            }),
+            interactive: false,
+            keyboard: false,
+            zIndexOffset: -100
+          }).addTo(group);
+        }
       });
       if (drawn === 0) { onError(new Error('Aucune geometrie recue')); return; }
       onSuccess(group);

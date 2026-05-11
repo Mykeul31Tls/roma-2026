@@ -685,29 +685,77 @@ function updateOpPanel() {
   opRowBus.classList.toggle('show', busLayer !== null);
 }
 
-// Applique l'opacite a toutes les polylignes et labels d'un layerGroup
+// =============================================================
+// SURIMPRESSIONS TRANSPORT via Overpass API (vectoriel OSM)
+// =============================================================
+let metroLayer     = null;
+let busLayer       = null;
+let metroRelations = [];   // [{allCoords, label, color}] pour labels dynamiques
+let busRelations   = [];
+
+const btnMetro = document.getElementById('btn-metro');
+const btnBus   = document.getElementById('btn-bus');
+const opPanel  = document.getElementById('op-panel');
+
+const opRowMetro   = document.getElementById('op-row-metro');
+const opInputMetro = document.getElementById('op-input-metro');
+const opValueMetro = document.getElementById('op-value-metro');
+
+const opRowBus   = document.getElementById('op-row-bus');
+const opInputBus = document.getElementById('op-input-bus');
+const opValueBus = document.getElementById('op-value-bus');
+
+function updateOpPanel() {
+  var anyActive = (metroLayer !== null) || (busLayer !== null);
+  opPanel.classList.toggle('show', anyActive);
+  opRowMetro.classList.toggle('show', metroLayer !== null);
+  opRowBus.classList.toggle('show', busLayer !== null);
+}
+
+// ---- Opacite ----
+// N'agit que sur les polylignes visibles (weight < 18) et les labels,
+// pas sur les polylignes fantômes (weight >= 18) qui restent invisibles.
 function setLayerGroupOpacity(group, v) {
   if (!group) return;
   group.eachLayer(function(l) {
-    // Polyligne
-    if (l.setStyle) {
-      l.setStyle({ opacity: v, fillOpacity: v * 0.2 });
+    if (l.setStyle && l.options && l.options.weight < 18) {
+      l.setStyle({ opacity: v });
     }
-    // Marker label : ajuste l'opacite via le style du span interne
-    if (l.getElement) {
+    if (l.getElement && l.options && l.options.weight === undefined) {
       var el = l.getElement();
       if (el) el.style.opacity = v;
     }
   });
 }
 
-// Charge les lignes depuis Overpass et retourne un layerGroup via callbacks
-// Renvoie le point median d'un tableau de coords [lat,lng]
-function midpoint(coords) {
-  if (!coords.length) return null;
-  return coords[Math.floor(coords.length / 2)];
+// ---- Labels dynamiques ----
+// A chaque deplacement/zoom, repositionne chaque label au midpoint
+// de la portion de la relation visible dans les bounds courants.
+// Si aucun point n'est visible, masque le label.
+function updateVisibleLabels() {
+  var bounds = map.getBounds();
+  var allRels = metroRelations.concat(busRelations);
+  allRels.forEach(function(rel) {
+    var visible = rel.allCoords.filter(function(c) {
+      return bounds.contains(c);
+    });
+    var el = rel.label.getElement ? rel.label.getElement() : null;
+    if (visible.length > 0) {
+      rel.label.setLatLng(visible[Math.floor(visible.length / 2)]);
+      if (el) el.style.display = '';
+    } else {
+      if (el) el.style.display = 'none';
+    }
+  });
+}
+map.on('moveend zoomend', updateVisibleLabels);
+
+// ---- Chargement Overpass ----
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// onSuccess(group, relations) : relations = [{allCoords, label, color}]
 function loadOverpassLines(query, colorFn, lineWeight, onSuccess, onError) {
   var url = OVERPASS_URL + '?data=' + encodeURIComponent(query);
   var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
@@ -723,58 +771,64 @@ function loadOverpassLines(query, colorFn, lineWeight, onSuccess, onError) {
     })
     .then(function(data) {
       clearTimeout(timer);
-      var group = L.layerGroup();
-      var drawn = 0;
+      var group     = L.layerGroup();
+      var relations = [];
+      var drawn     = 0;
+
       (data.elements || []).forEach(function(el) {
         if (el.type !== 'relation') return;
         var tags = el.tags || {};
-        // Libelle court (numero) et nom long pour le toast
-        var ref  = (tags.ref  || '').trim();
-        var name = (tags.name || tags['name:fr'] || tags['name:it'] || '').trim();
-        var displayRef  = ref  || name.substring(0, 6) || '?';
+        var ref         = (tags.ref  || '').trim();
+        var name        = (tags.name || tags['name:fr'] || tags['name:it'] || '').trim();
+        var displayRef  = ref  || (name ? name.substring(0, 6) : '?');
         var displayName = name || ref || 'Ligne inconnue';
-        var color = colorFn(ref || name);
+        var toastMsg    = displayRef + (displayName && displayName !== displayRef ? ' - ' + displayName : '');
+        var color       = colorFn(ref || name);
+        var allCoords   = [];
 
-        // Collecte tous les points de la relation pour trouver le midpoint
-        var allCoords = [];
         (el.members || []).forEach(function(m) {
           if (m.type === 'way' && m.geometry && m.geometry.length > 1) {
             var latlngs = m.geometry.map(function(p) { return [p.lat, p.lon]; });
             allCoords = allCoords.concat(latlngs);
-            // Polyligne interactive : tap affiche nom dans toast
+
+            // Polyligne visible
             L.polyline(latlngs, {
-              color: color,
-              weight: lineWeight,
+              color: color, weight: lineWeight,
               opacity: DEFAULT_OVERLAY_OPACITY,
-              smoothFactor: 1,
-              interactive: true
-            }).on('click', function() {
-              toast(displayRef ? (displayRef + ' - ' + displayName) : displayName);
+              smoothFactor: 1, interactive: false
             }).addTo(group);
+
+            // Polyligne fantome : zone de tap large (20px), quasi-invisible
+            L.polyline(latlngs, {
+              color: color, weight: 20,
+              opacity: 0.01, fillOpacity: 0,
+              smoothFactor: 1, interactive: true
+            }).on('click', function(e) {
+              L.DomEvent.stopPropagation(e);
+              toast(toastMsg);
+            }).addTo(group);
+
             drawn++;
           }
         });
 
-        // Label permanent au point median de la relation
+        // Label permanent repositionne dynamiquement
         if (allCoords.length) {
-          var mid = midpoint(allCoords);
-          var labelHtml = '<span class="line-label" style="background:' + color + '">' +
-            displayRef.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') +
-            '</span>';
-          L.marker(mid, {
+          var mid = allCoords[Math.floor(allCoords.length / 2)];
+          var labelMarker = L.marker(mid, {
             icon: L.divIcon({
               className: 'line-label-icon',
-              html: labelHtml,
-              iconAnchor: [0, 0]
+              html: '<span class="line-label" style="background:' + color + '">' + escHtml(displayRef) + '</span>',
+              iconAnchor: [0, 8]
             }),
-            interactive: false,
-            keyboard: false,
-            zIndexOffset: -100
+            interactive: false, keyboard: false, zIndexOffset: -100
           }).addTo(group);
+          relations.push({ allCoords: allCoords, label: labelMarker, color: color });
         }
       });
+
       if (drawn === 0) { onError(new Error('Aucune geometrie recue')); return; }
-      onSuccess(group);
+      onSuccess(group, relations);
     })
     .catch(function(e) {
       clearTimeout(timer);
@@ -785,6 +839,7 @@ function loadOverpassLines(query, colorFn, lineWeight, onSuccess, onError) {
 // ----- METRO -----
 function metroHide() {
   if (metroLayer) { try { map.removeLayer(metroLayer); } catch(e) {} metroLayer = null; }
+  metroRelations = [];
   btnMetro.textContent = 'Metro';
   btnMetro.classList.remove('active');
   updateOpPanel();
@@ -795,16 +850,15 @@ function metroShow() {
   btnMetro.classList.add('active');
   btnMetro.disabled = true;
   toast('Chargement metro...');
-  loadOverpassLines(
-    METRO_QUERY,
-    metroLineColor,
-    5,
-    function(group) {
-      metroLayer = group;
+  loadOverpassLines(METRO_QUERY, metroLineColor, 5,
+    function(group, rels) {
+      metroLayer     = group;
+      metroRelations = rels;
       metroLayer.addTo(map);
+      updateVisibleLabels();
       btnMetro.textContent = 'Metro ON';
-      btnMetro.disabled = false;
-      opInputMetro.value = DEFAULT_OVERLAY_OPACITY;
+      btnMetro.disabled    = false;
+      opInputMetro.value   = DEFAULT_OVERLAY_OPACITY;
       opValueMetro.textContent = Math.round(DEFAULT_OVERLAY_OPACITY * 100) + '%';
       updateOpPanel();
       toast('Lignes metro affichees');
@@ -833,6 +887,7 @@ opInputMetro.addEventListener('input', function() {
 // ----- BUS / TRAM -----
 function busHide() {
   if (busLayer) { try { map.removeLayer(busLayer); } catch(e) {} busLayer = null; }
+  busRelations = [];
   btnBus.textContent = 'Bus';
   btnBus.classList.remove('active');
   updateOpPanel();
@@ -843,16 +898,15 @@ function busShow() {
   btnBus.classList.add('active');
   btnBus.disabled = true;
   toast('Chargement tram/bus...');
-  loadOverpassLines(
-    BUS_QUERY,
-    tramLineColor,
-    4,
-    function(group) {
-      busLayer = group;
+  loadOverpassLines(BUS_QUERY, tramLineColor, 4,
+    function(group, rels) {
+      busLayer     = group;
+      busRelations = rels;
       busLayer.addTo(map);
+      updateVisibleLabels();
       btnBus.textContent = 'Bus ON';
-      btnBus.disabled = false;
-      opInputBus.value = DEFAULT_OVERLAY_OPACITY;
+      btnBus.disabled    = false;
+      opInputBus.value   = DEFAULT_OVERLAY_OPACITY;
       opValueBus.textContent = Math.round(DEFAULT_OVERLAY_OPACITY * 100) + '%';
       updateOpPanel();
       toast('Lignes tram/bus affichees');

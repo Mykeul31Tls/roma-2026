@@ -1,0 +1,775 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Roma">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#4a1010">
+<title>ROMA - La Citta Eterna</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; width: 100%; overflow: hidden; font-family: 'DM Sans', system-ui, -apple-system, sans-serif; color: #1c1108; background: #fdf5e6; }
+
+#app { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+
+#header {
+  background: #4a1010;
+  color: #fdf5e6;
+  padding: calc(8px + env(safe-area-inset-top)) 12px 8px 12px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px;
+  border-bottom: 2px solid #c9973a;
+  position: relative;
+  z-index: 500;
+}
+#title-block { flex: 1; min-width: 0; }
+#title {
+  font-family: 'Cormorant Garamond', serif;
+  font-weight: 700;
+  font-size: 20px;
+  color: #c9973a;
+  line-height: 1.05;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#subtitle {
+  font-size: 11px;
+  color: #fdf5e6;
+  opacity: 0.85;
+  margin-top: 2px;
+  font-weight: 400;
+}
+
+#buttons { display: flex; gap: 6px; flex-shrink: 0; }
+.hbtn {
+  background: #fdf5e6;
+  color: #1c1108;
+  border: none;
+  padding: 9px 11px;
+  border-radius: 10px;
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  min-width: 68px;
+  text-align: center;
+  letter-spacing: 0.3px;
+  transition: background 0.15s, color 0.15s;
+}
+.hbtn:active { transform: scale(0.96); }
+.hbtn.gps.active { background: #c9973a; color: #1c1108; }
+.hbtn.metro { background: #c0392b; color: #fdf5e6; }
+.hbtn.metro.active { background: #e74c3c; color: #fff; }
+.hbtn.bus { background: #1e6091; color: #fdf5e6; }
+.hbtn.bus.active { background: #2980b9; color: #fff; }
+
+#map { flex: 1; position: relative; z-index: 1; min-height: 0; }
+
+#legend {
+  background: #1c1108;
+  color: #fdf5e6;
+  padding: 7px 8px calc(7px + env(safe-area-inset-bottom)) 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  gap: 4px;
+  font-size: 10.5px;
+  z-index: 500;
+  border-top: 1px solid #4a1010;
+}
+.lg { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.lg-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.3); }
+.lg-diam { width: 11px; height: 11px; transform: rotate(45deg); flex-shrink: 0; border: 1px solid rgba(255,255,255,0.3); }
+
+#poi-panel {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  background: #fdf5e6;
+  border-top-left-radius: 20px;
+  border-top-right-radius: 20px;
+  padding: 20px 22px calc(22px + env(safe-area-inset-bottom)) 22px;
+  box-shadow: 0 -10px 30px rgba(0,0,0,0.32);
+  transform: translateY(110%);
+  transition: transform 0.32s cubic-bezier(0.32, 0.72, 0.24, 1);
+  z-index: 1000;
+  max-height: 62vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+#poi-panel.open { transform: translateY(0); }
+#poi-panel::before {
+  content: '';
+  position: absolute;
+  top: 7px; left: 50%;
+  transform: translateX(-50%);
+  width: 38px; height: 4px;
+  background: #c9973a;
+  opacity: 0.4;
+  border-radius: 2px;
+}
+
+#poi-close {
+  position: absolute;
+  top: 14px; right: 14px;
+  background: rgba(28,17,8,0.06);
+  border: none;
+  font-size: 14px; font-weight: 700;
+  color: #1c1108;
+  width: 32px; height: 32px; border-radius: 50%;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+}
+#poi-close:active { background: rgba(28,17,8,0.15); }
+
+#poi-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #fff;
+  margin-bottom: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+#poi-name {
+  font-family: 'Cormorant Garamond', serif;
+  font-weight: 700;
+  font-size: 26px;
+  line-height: 1.1;
+  color: #4a1010;
+  margin-bottom: 12px;
+  padding-right: 36px;
+}
+#poi-desc { font-size: 14px; line-height: 1.5; color: #1c1108; margin-bottom: 14px; }
+#poi-tip {
+  font-size: 13px; line-height: 1.5;
+  background: #fff8e8;
+  border-left: 3px solid #c9973a;
+  padding: 10px 14px;
+  border-radius: 4px;
+  color: #1c1108;
+}
+
+#toast {
+  position: fixed;
+  left: 50%; bottom: 100px;
+  transform: translateX(-50%) translateY(20px);
+  background: rgba(28, 17, 8, 0.94);
+  color: #fdf5e6;
+  padding: 10px 18px;
+  border-radius: 22px;
+  font-size: 13px;
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity 0.25s, transform 0.25s;
+  z-index: 1500;
+  pointer-events: none;
+  max-width: 80vw;
+  text-align: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+#op-panel {
+  position: fixed;
+  right: 12px;
+  top: calc(70px + env(safe-area-inset-top));
+  background: rgba(28, 17, 8, 0.88);
+  color: #fdf5e6;
+  padding: 9px 12px 11px 12px;
+  border-radius: 12px;
+  display: none;
+  z-index: 600;
+  font-size: 10.5px;
+  width: 138px;
+  text-align: center;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+  font-weight: 500;
+}
+#op-panel.show { display: block; }
+.op-row { display: none; }
+.op-row.show { display: block; }
+.op-row + .op-row.show { margin-top: 10px; padding-top: 8px; border-top: 1px solid rgba(201, 151, 58, 0.25); }
+#op-panel label { display: block; margin-bottom: 4px; color: #c9973a; font-weight: 700; letter-spacing: 0.5px; }
+#op-panel input { width: 100%; accent-color: #c9973a; cursor: pointer; }
+#op-value { display: inline-block; margin-top: 2px; font-weight: 700; color: #fdf5e6; }
+
+.marker-svg { display: block; pointer-events: auto; }
+.poi-divicon, .gps-divicon { background: transparent !important; border: none !important; }
+
+.gps-pulse {
+  width: 16px; height: 16px;
+  background: #2980b9;
+  border: 2.5px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 rgba(41, 128, 185, 0.6), 0 1px 3px rgba(0,0,0,0.3);
+  animation: pulse 1.6s infinite;
+}
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(41, 128, 185, 0.55), 0 1px 3px rgba(0,0,0,0.3); }
+  70% { box-shadow: 0 0 0 18px rgba(41, 128, 185, 0), 0 1px 3px rgba(0,0,0,0.3); }
+  100% { box-shadow: 0 0 0 0 rgba(41, 128, 185, 0), 0 1px 3px rgba(0,0,0,0.3); }
+}
+
+.leaflet-container { background: #e8e0d0; font-family: 'DM Sans', sans-serif; outline: none; }
+.leaflet-control-attribution { font-size: 9px; background: rgba(253,245,230,0.85); }
+.leaflet-control-zoom a {
+  background: #fdf5e6 !important;
+  color: #4a1010 !important;
+  border-color: #c9973a !important;
+}
+
+@media (max-width: 360px) {
+  #title { font-size: 17px; }
+  .hbtn { min-width: 60px; font-size: 11px; padding: 8px 9px; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <div id="title-block">
+      <div id="title">ROMA - La Città Eterna</div>
+      <div id="subtitle">Guide - [DATES]</div>
+    </div>
+    <div id="buttons">
+      <button class="hbtn gps" id="btn-gps" type="button">GPS</button>
+      <button class="hbtn metro" id="btn-metro" type="button">Metro</button>
+      <button class="hbtn bus" id="btn-bus" type="button">Bus</button>
+    </div>
+  </div>
+  <div id="map"></div>
+  <div id="legend">
+    <div class="lg"><span class="lg-dot" style="background:#c0392b"></span>Majeurs</div>
+    <div class="lg"><span class="lg-dot" style="background:#d35400"></span>Forts</div>
+    <div class="lg"><span class="lg-dot" style="background:#b7860b"></span>Notables</div>
+    <div class="lg"><span class="lg-dot" style="background:#27ae60"></span>Bonus</div>
+    <div class="lg"><span class="lg-diam" style="background:#1abc9c"></span>Speciaux</div>
+  </div>
+</div>
+
+<div id="op-panel">
+  <div class="op-row" id="op-row-metro">
+    <label>Opacite metro</label>
+    <input type="range" id="op-input-metro" min="0.3" max="1" step="0.05" value="0.82">
+    <div><span id="op-value-metro">82%</span></div>
+  </div>
+  <div class="op-row" id="op-row-bus">
+    <label>Opacite bus</label>
+    <input type="range" id="op-input-bus" min="0.3" max="1" step="0.05" value="0.82">
+    <div><span id="op-value-bus">82%</span></div>
+  </div>
+</div>
+
+<div id="poi-panel" aria-hidden="true">
+  <button id="poi-close" type="button" aria-label="Fermer">X</button>
+  <div id="poi-badge"></div>
+  <div id="poi-name"></div>
+  <div id="poi-desc"></div>
+  <div id="poi-tip"></div>
+</div>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// =============================================================
+// DONNEES POI - 60 lieux principaux (p0..p3) + 12 speciaux (special)
+// =============================================================
+const POIS = [
+  {id:1,lat:41.8902,lng:12.4922,prio:"p0",label:"1",name:"Colisée",desc:"Amphithéâtre antique symbole de Rome, impressionnant par son échelle et sa puissance visuelle. Un passage obligé pour comprendre la ville.",tip:"À voir tôt le matin ou au coucher du soleil depuis l'extérieur pour éviter la foule; excellente vue depuis les environs de la Via Nicola Salvi."},
+  {id:2,lat:41.8925,lng:12.4867,prio:"p0",label:"2",name:"Forum romain",desc:"Le cœur politique et religieux de la Rome antique, avec temples, arcs et basiliques en ruine. La promenade y est essentielle pour lire la ville antique.",tip:"Prévois une visite lente et des chaussures confortables; la lumière de fin d'après-midi met mieux en relief les volumes."},
+  {id:3,lat:41.8899,lng:12.4875,prio:"p0",label:"3",name:"Palatin",desc:"Colline fondatrice de Rome, avec vestiges impériaux et vues majeures sur les forums. Le lieu mêle archéologie et panoramas superbes.",tip:"Combine-le avec le Forum dans la même demi-journée; les points hauts offrent les meilleures photos sur les ruines."},
+  {id:4,lat:41.9009,lng:12.4833,prio:"p0",label:"4",name:"Panthéon",desc:"Chef-d'œuvre antique intact, célèbre pour son dôme et son oculus. L'intérieur donne une sensation d'espace unique à Rome.",tip:"Entre le matin pour profiter du calme; reste quelques minutes sous l'oculus pour sentir la lumière changer."},
+  {id:5,lat:41.8992,lng:12.4833,prio:"p0",label:"5",name:"Piazza Navona",desc:"Place baroque emblématique, animée par fontaines, façades et ambiance romaine. C'est un des grands théâtres urbains de la ville.",tip:"Passe-y en fin de journée, quand les artistes de rue et les cafés rendent la place plus vivante."},
+  {id:6,lat:41.901,lng:12.4663,prio:"p0",label:"6",name:"Fontaine de Trevi",desc:"La fontaine la plus célèbre de Rome, spectaculaire par sa monumentalité et sa mise en scène. C'est une icône à voir au moins une fois.",tip:"Va-y très tôt ou tard le soir; en journée la foule rend l'arrêt bref, mais la rue voisine mérite aussi le détour."},
+  {id:7,lat:41.903,lng:12.4663,prio:"p0",label:"7",name:"Piazza di Spagna",desc:"Escalier monumental et place de carte postale, au croisement du shopping et des perspectives classiques. L'ensemble est l'un des visages les plus connus de Rome.",tip:"Monte les marches pour la vue, puis redescends vers la Via Margutta et ses ruelles photogéniques."},
+  {id:8,lat:41.9029,lng:12.4547,prio:"p0",label:"8",name:"Basilique Saint-Pierre",desc:"Grande basilique du Vatican, incontournable pour sa coupole, sa façade et son ampleur. Même vue de l'extérieur, elle impose le respect.",tip:"Arrive tôt pour éviter les files et profite de la place vide avant l'affluence; la perspective depuis l'axe central est la plus forte."},
+  {id:9,lat:41.9022,lng:12.4536,prio:"p0",label:"9",name:"Place Saint-Pierre",desc:"Immense espace architectural conçu pour impressionner, avec colonnades et axe monumental. C'est une des grandes scènes urbaines d'Europe.",tip:"Reviens au crépuscule pour une ambiance bien différente; la symétrie des colonnades fonctionne très bien en photo."},
+  {id:10,lat:41.8931,lng:12.4827,prio:"p0",label:"10",name:"Capitole",desc:"Colline politique et historique de Rome, avec place dessinée par Michel-Ange. Le site relie la ville antique, la Renaissance et les musées.",tip:"Prends le temps de monter par la Cordonata; l'approche progressive est aussi belle que la place elle-même."},
+  {id:11,lat:41.8903,lng:12.4923,prio:"p0",label:"11",name:"Autel de la Patrie",desc:"Monument blanc massif qui domine le centre historique, très visible dans le paysage romain. C'est un repère urbain majeur et très photographique.",tip:"Monte au belvédère pour une vue large sur les toits et les forums; la façade est plus belle avec une lumière latérale."},
+  {id:12,lat:41.8907,lng:12.4923,prio:"p0",label:"12",name:"Fori Imperiali",desc:"Axe monumental bordé de vestiges impériaux, essentiel pour comprendre Rome en marche. La promenade relie plusieurs couches d'histoire en plein air.",tip:"Parcours-le à pied au coucher du soleil pour les meilleures perspectives sur les ruines et le Colisée."},
+  {id:13,lat:41.8863,lng:12.4942,prio:"p1",label:"13",name:"Domus Aurea",desc:"Vestige fascinant du palais de Néron, célèbre pour ses espaces souterrains et son aura de découverte. C'est un site clé pour l'archéologie romaine.",tip:"Même sans visite intérieure, observe le secteur du Colle Oppio; les abords aident à comprendre l'ampleur du complexe."},
+  {id:14,lat:41.8931,lng:12.4825,prio:"p1",label:"14",name:"Campidoglio - Piazza del Campidoglio",desc:"Place Renaissance élégante, très réussie dans sa composition et ses façades. Elle offre une transition parfaite entre Rome antique et ville moderne.",tip:"Va-y en milieu de journée pour bien lire les reliefs; la vue sur le Forum depuis les côtés est superbe."},
+  {id:15,lat:41.8895,lng:12.4841,prio:"p1",label:"15",name:"Basilique Saint-Clément",desc:"Église remarquable à couches superposées, l'un des meilleurs récits stratifiés de Rome. On y lit plusieurs siècles d'histoire sur un seul site.",tip:"Si tu n'entres que dans une église moins connue, choisis celle-ci; descendre dans les niveaux anciens vaut vraiment l'effort."},
+  {id:16,lat:41.8968,lng:12.4746,prio:"p1",label:"16",name:"San Luigi dei Francesi",desc:"Église célèbre pour ses Caravage, discrète depuis la rue mais exceptionnelle à l'intérieur. C'est un arrêt majeur pour l'art à Rome.",tip:"Passe en début d'après-midi et prends le temps de te placer face aux chapelles; l'éclairage des tableaux est décisif."},
+  {id:17,lat:41.8976,lng:12.4708,prio:"p1",label:"17",name:"Sant'Ignazio di Loyola",desc:"Église baroque spectaculaire, connue pour son plafond illusionniste. L'effet de perspective en fait une halte très forte.",tip:"Cherche le point marqué au sol pour voir la fausse coupole correctement; idéal quand tu veux une pause d'architecture."},
+  {id:18,lat:41.8991,lng:12.4768,prio:"p1",label:"18",name:"Piazza del Popolo",desc:"Grande porte d'entrée de Rome, avec symétrie, obélisque et ambiance de carrefour urbain. C'est une place parfaite pour sentir la ville s'ouvrir.",tip:"Monte vers le Pincio ensuite pour enchaîner avec une belle vue; la place est plus jolie à l'heure bleue."},
+  {id:19,lat:41.9031,lng:12.4817,prio:"p1",label:"19",name:"Palazzo Altemps",desc:"Palais de la Renaissance élégant, abritant de belles collections dans un cadre raffiné. Le bâtiment lui-même vaut autant que le contenu.",tip:"À privilégier si tu aimes les palais intérieurs bien préservés; c'est souvent plus calme que les grands musées."},
+  {id:20,lat:41.9032,lng:12.467,prio:"p1",label:"20",name:"Via del Corso",desc:"Grande artère centrale de Rome, utile pour sentir le flux de la ville et relier plusieurs sites majeurs. Elle structure le Centro Storico.",tip:"Ne la fais pas comme simple axe de transit; observe les façades et les rues latérales qui l'alimentent."},
+  {id:21,lat:41.8986,lng:12.4729,prio:"p1",label:"21",name:"Pincio",desc:"Promenade panoramique au-dessus de la Piazza del Popolo, idéale pour une vue romantique sur le centre. C'est un classique des couchers de soleil romains.",tip:"Va-y 30 à 45 minutes avant le coucher du soleil pour avoir une place au belvédère."},
+  {id:22,lat:41.8897,lng:12.4905,prio:"p1",label:"22",name:"Musées capitolins",desc:"Ensemble muséal majeur, lié au Capitole et à l'histoire civique de Rome. Les collections et la localisation en font une étape essentielle.",tip:"Si ton temps est limité, choisis les salles les plus antiques et profite aussi des vues depuis les terrasses."},
+  {id:23,lat:41.9029,lng:12.4597,prio:"p1",label:"23",name:"Borgo Pio",desc:"Rue de quartier près du Vatican, authentique et agréable pour marcher, boire un verre et regarder la vie locale. Elle complète bien les visites monumentales.",tip:"À faire avant ou après Saint-Pierre; le matin et l'apéritif sont les meilleurs moments pour l'ambiance."},
+  {id:24,lat:41.8837,lng:12.4828,prio:"p1",label:"24",name:"Basilique Saint-Paul-hors-les-Murs",desc:"Grande basilique solennelle, vaste et lumineuse, un des grands pôles sacrés de Rome. Elle impressionne par ses proportions et son calme.",tip:"Va-y en dehors des heures de pointe pour mieux apprécier l'espace; le secteur est simple à parcourir à pied."},
+  {id:25,lat:41.8896,lng:12.5017,prio:"p1",label:"25",name:"Arc de Constantin",desc:"Arc de triomphe monumental au pied du Colisée, très fort visuellement et essentiel dans l'axe antique. C'est un point de photo classique mais incontournable.",tip:"Observe-le en lien avec le Colisée et le Palatin; les meilleurs cadrages se font en bord de route."},
+  {id:26,lat:41.8797,lng:12.475,prio:"p1",label:"26",name:"Testaccio mercato",desc:"Marché et quartier populaire où l'on sent encore Rome au quotidien. C'est un bon lieu pour manger, observer et faire une pause locale.",tip:"Passe avant le déjeuner pour capter l'énergie du marché; cherche un comptoir simple plutôt qu'une adresse trop mise en scène."},
+  {id:27,lat:41.8861,lng:12.4821,prio:"p2",label:"27",name:"Bocca della Verità",desc:"Petit arrêt célèbre associé à une légende médiévale, amusant et très photogénique. Le site est surtout agréable comme pause sur une balade dans le quartier.",tip:"Combine-le avec Santa Maria in Cosmedin juste à côté; le matin, l'attente est souvent plus courte."},
+  {id:28,lat:41.8893,lng:12.4833,prio:"p2",label:"28",name:"Santa Maria in Aracoeli",desc:"Église perchée sur le Capitole, riche et un peu cachée malgré sa position centrale. Elle vaut pour son atmosphère et sa montée d'accès.",tip:"Monte les marches sans te presser; la vue en contrebas et l'intérieur créent un vrai contraste."},
+  {id:29,lat:41.8958,lng:12.4829,prio:"p2",label:"29",name:"Largo di Torre Argentina",desc:"Ensemble de ruines antiques en plein tissu urbain, très lisible depuis la rue. C'est un bon exemple de Rome superposée à elle-même.",tip:"Arrête-toi au bord des passerelles pour lire les temples; le site s'intègre bien à une marche vers le Panthéon."},
+  {id:30,lat:41.8986,lng:12.4691,prio:"p2",label:"30",name:"Via Margutta",desc:"Rue élégante et discrète, connue pour ses ateliers, patios et façades charmantes. Elle offre une Rome plus intime que les grands axes.",tip:"À faire sans hâte en milieu de matinée; les détails de portails et de jardins se voient mieux avec de la lumière."},
+  {id:31,lat:41.9008,lng:12.469,prio:"p2",label:"31",name:"Trinità dei Monti",desc:"Église dominante en haut de l'escalier de la Place d'Espagne, très visible depuis l'espace public. Elle sert de repère et de point de vue central.",tip:"Passe par l'esplanade au-dessus de l'escalier pour des vues plus dégagées que depuis le bas."},
+  {id:32,lat:41.9053,lng:12.4777,prio:"p2",label:"32",name:"Piazza Barberini",desc:"Place urbaine animée, connue pour sa fontaine et son rôle de carrefour central. Elle sert de bonne transition vers le nord du centre historique.",tip:"Idéale pour une pause courte entre Trevi, Triton et la Via Veneto; regarde les façades alentour."},
+  {id:33,lat:41.8928,lng:12.4837,prio:"p2",label:"33",name:"Via dei Fori Imperiali",desc:"Large avenue bordée d'antiques, utile pour des perspectives cinématographiques sur Rome. La marche y est très visuelle et directe.",tip:"Traverse-la au lever ou au coucher du soleil pour éviter la chaleur et obtenir de belles lignes de fuite."},
+  {id:34,lat:41.8948,lng:12.4708,prio:"p2",label:"34",name:"Piazza di Sant'Eustachio",desc:"Petite place de quartier élégante, proche des grands monuments mais plus tranquille. Elle donne un bon aperçu du Rome du quotidien central.",tip:"Bon arrêt café avant ou après le Panthéon; observe l'enchaînement des rues étroites autour de la place."},
+  {id:35,lat:41.8964,lng:12.4852,prio:"p2",label:"35",name:"Sant'Andrea della Valle",desc:"Grande église baroque impressionnante par sa coupole et ses proportions. Elle est souvent moins bondée que les sites vedettes du centre.",tip:"Entre quelques minutes pour ressentir l'échelle intérieure; la nef est particulièrement spectaculaire."},
+  {id:36,lat:41.8857,lng:12.4674,prio:"p2",label:"36",name:"Gianicolo",desc:"Colline panoramique emblématique avec vues larges sur les toits de Rome. C'est l'un des meilleurs endroits pour comprendre la géographie de la ville.",tip:"Va-y par temps clair, surtout en fin d'après-midi; le vent y est souvent plus agréable qu'en bas."},
+  {id:37,lat:41.8974,lng:12.4958,prio:"p2",label:"37",name:"Basilique Sainte-Marie-Majeure",desc:"Grande basilique majeure, riche en mosaïques et en histoire. Sa présence au cœur d'Esquiline en fait une étape très importante.",tip:"Regarde aussi la place et l'axe urbain autour; la façade se lit très bien depuis l'espace public."},
+  {id:38,lat:41.891,lng:12.4751,prio:"p2",label:"38",name:"Musée de Rome",desc:"Musée utile pour replacer la ville dans son histoire sociale et artistique. Le Palais Braschi ajoute une belle dimension architecturale.",tip:"À faire si tu veux mieux comprendre Rome au-delà des ruines; le bâtiment compte autant que certaines salles."},
+  {id:39,lat:41.8973,lng:12.4724,prio:"p2",label:"39",name:"Palazzo Venezia",desc:"Palais imposant à la frontière du centre historique, très visible et chargé d'histoire. Il structure fortement le paysage autour de la Via del Plebiscito.",tip:"À observer surtout depuis la rue et les axes voisins; les façades sont plus parlantes qu'un passage rapide."},
+  {id:40,lat:41.8802,lng:12.4869,prio:"p2",label:"40",name:"Ostiense - street art",desc:"Quartier contemporain où d'anciennes zones industrielles ont été transformées par l'art urbain. Le contraste avec Rome antique y est très intéressant.",tip:"Privilégie une balade à pied autour de la Via del Porto Fluviale; la lumière de fin d'après-midi marche bien pour les photos."},
+  {id:41,lat:41.8954,lng:12.4871,prio:"p2",label:"41",name:"San Lorenzo in Miranda",desc:"Église insérée dans les ruines du Temple d'Antonin et Faustine, très forte visuellement. L'imbrication du sacré et de l'antique est remarquable.",tip:"Observe-la depuis le Forum et depuis la rue; le contraste de niveaux est le principal intérêt."},
+  {id:42,lat:41.8926,lng:12.4711,prio:"p2",label:"42",name:"Piazza della Minerva",desc:"Petite place élégante près du Panthéon, calme et très romaine dans son échelle. Elle offre une pause agréable entre plusieurs gros sites.",tip:"Regarde l'obélisque et la basilique voisine; parfait pour une halte courte hors de la foule."},
+  {id:43,lat:41.8869,lng:12.4699,prio:"p3",label:"43",name:"Tiber Island",desc:"Île urbaine au milieu du Tibre, agréable à traverser et facile à intégrer à une promenade. Elle donne un autre rapport au fleuve et à la ville.",tip:"Traverse-la à pied plutôt que de la traiter comme simple passage; les vues sur les quais sont plus belles qu'on ne l'imagine."},
+  {id:44,lat:41.8908,lng:12.4831,prio:"p3",label:"44",name:"Santa Maria in Cosmedin",desc:"Église simple et photogénique, intéressante pour son cadre antique et médiéval. Elle complète bien l'arrêt voisin de la Bocca della Verità.",tip:"Entre si la façade t'attire, mais même depuis la rue le site raconte bien le quartier."},
+  {id:45,lat:41.8899,lng:12.4737,prio:"p3",label:"45",name:"Palazzo della Sapienza",desc:"Cour élégante et discrète, typique de la Rome savante et classique. L'ensemble donne une belle leçon d'architecture sobre au centre-ville.",tip:"Cherche l'accès depuis les rues voisines et prends le temps d'observer la cour intérieure depuis l'entrée."},
+  {id:46,lat:41.8896,lng:12.4743,prio:"p3",label:"46",name:"Sant'Ivo alla Sapienza",desc:"Église baroque fine et géométrique, petite mais très singulière. Sa silhouette est un beau détail architectural du centre.",tip:"Vérifie l'accès avant de compter sur une visite intérieure; la lecture extérieure vaut déjà le détour."},
+  {id:47,lat:41.8887,lng:12.467,prio:"p3",label:"47",name:"Campo de' Fiori",desc:"Place animée, pratique pour sentir le rythme du centre et pour une pause dehors. L'ambiance y est plus directe et moins monumentale que sur les grandes places.",tip:"Viens tôt pour le marché, ou plus tard pour l'apéritif; à midi la place est souvent la plus chargée."},
+  {id:48,lat:41.8954,lng:12.4671,prio:"p3",label:"48",name:"Via dei Coronari",desc:"Rue élégante bordée de boutiques et de façades anciennes, agréable pour flâner. Elle relie bien le cœur du centre à l'atmosphère des petites rues romaines.",tip:"Marche-la lentement en regardant les portails et les vitrines; c'est une rue faite pour les détails."},
+  {id:49,lat:41.8886,lng:12.4685,prio:"p3",label:"49",name:"Ghetto juif",desc:"Quartier compact et historique, riche en mémoire, ruelles et ambiance de voisinage. Il se découvre très bien à pied sans programme lourd.",tip:"Prends une pause en terrasse en observant les façades basses et les ruelles; le quartier se savoure lentement."},
+  {id:50,lat:41.8957,lng:12.4794,prio:"p3",label:"50",name:"Sant'Andrea della Fratte",desc:"Église discrète mais intéressante, à deux pas des grands flux touristiques. Elle offre une respiration plus calme au milieu du centre.",tip:"Entre quelques minutes si tu passes dans le secteur de la Via del Corso; c'est une bonne halte de transition."},
+  {id:51,lat:41.8875,lng:12.4698,prio:"p3",label:"51",name:"Portique d'Octavie",desc:"Vestige antique intégré au tissu urbain, très parlant pour lire les superpositions de Rome. Le site est petit mais très évocateur.",tip:"Observe-le surtout depuis la rue et en lien avec le Ghetto; le voisinage immédiat est essentiel."},
+  {id:52,lat:41.8835,lng:12.4766,prio:"p3",label:"52",name:"Santa Sabina",desc:"Basilique paisible sur l'Aventin, élégante et très sobre. Elle est appréciée pour son calme et son charme architectural.",tip:"Combine-la avec les jardins et les belvédères de l'Aventin; l'atmosphère y est plus détendue que dans le centre."},
+  {id:53,lat:41.8842,lng:12.4778,prio:"p3",label:"53",name:"Jardin des Orangers",desc:"Petit jardin panoramique sur l'Aventin, parfait pour une halte au calme. La vue sur Rome y est simple et efficace.",tip:"Idéal en fin de journée pour un moment reposant; viens sans attente particulière, c'est une pause facile."},
+  {id:54,lat:41.8855,lng:12.4767,prio:"p3",label:"54",name:"Basilique Sainte-Marie-in-Cosmedin",desc:"Église au charme ancien, simple et bien ancrée dans le quartier. Elle fonctionne bien comme stop entre Aventin et Forum Boarium.",tip:"Regarde le contraste entre l'intérieur sobre et le voisinage antique; parfait pour une mini-boucle à pied."},
+  {id:55,lat:41.8768,lng:12.5033,prio:"p3",label:"55",name:"Porta Portese",desc:"Marché populaire emblématique du dimanche, très vivant et très romain. C'est surtout une expérience de rue et d'ambiance locale.",tip:"À faire uniquement le dimanche matin; arrive tôt pour éviter la foule et avoir le meilleur choix."},
+  {id:56,lat:41.8919,lng:12.4991,prio:"p3",label:"56",name:"Rione Monti",desc:"Quartier central plein de petites rues, bars et façades agréables à parcourir. C'est un bon endroit pour sentir un Rome plus quotidien.",tip:"Perds-toi dans les rues secondaires plutôt que sur les axes principaux; l'intérêt est dans les détours."},
+  {id:57,lat:41.8938,lng:12.4992,prio:"p3",label:"57",name:"Via Urbana",desc:"Rue de quartier intéressante entre Monti et les axes antiques, avec un vrai relief urbain. Elle marche bien pour une balade spontanée.",tip:"Parfaite pour un passage à pied entre deux visites; regarde les cafés et les immeubles plutôt que d'aller vite."},
+  {id:58,lat:41.8824,lng:12.4711,prio:"p3",label:"58",name:"Via Garibaldi",desc:"Rue en montée sur le Janicule, agréable pour la marche et les vues. Elle relie bien le Trastevere aux points hauts.",tip:"La montée est plus plaisante quand il fait frais; prends-la comme une transition panoramique."},
+  {id:59,lat:41.8867,lng:12.4666,prio:"p3",label:"59",name:"Piazza Trilussa",desc:"Place vivante en bord de Trastevere, pratique pour sentir l'énergie du quartier. C'est un bon point de départ ou de fin de promenade.",tip:"Va-y en soirée pour l'ambiance; en journée elle sert surtout de repère avant de se perdre dans les ruelles."},
+  {id:60,lat:41.8861,lng:12.4708,prio:"p3",label:"60",name:"Santa Maria in Trastevere",desc:"Basilique emblématique du quartier, connue pour sa place et sa mosaïque. Elle incarne bien le charme populaire et ancien du Trastevere.",tip:"Passe avant le dîner pour profiter de la place sans trop de monde; la façade s'apprécie aussi très bien de nuit."},
+  {id:61,lat:41.898,lng:12.4841,prio:"special",label:"S1",name:"Minerva, la trompe-l'oeil du dôme",desc:"Dans Sant'Ignazio, le faux dôme peint crée une illusion saisissante. C'est un classique des effets baroques romains, souvent raté par les visiteurs pressés.",tip:"Repère le disque au sol pour le bon angle; recule-toi exactement au point de vue indiqué pour voir l'illusion fonctionner."},
+  {id:62,lat:41.8973,lng:12.4849,prio:"special",label:"S2",name:"Crypte des Capucins",desc:"Lieu insolite décoré d'ossements, à la fois macabre et fascinant. C'est une expérience rare au cœur de Rome, très différente des monuments classiques.",tip:"Prévois un passage bref mais attentif; c'est plus impressionnant si tu arrives dans une ambiance calme."},
+  {id:63,lat:41.8868,lng:12.4762,prio:"special",label:"S3",name:"Trou de serrure de l'Aventin",desc:"Point de vue minuscule et célèbre sur la coupole de Saint-Pierre, via une serrure de porte. L'effet est simple, secret et mémorable.",tip:"Va-y en heure creuse pour éviter l'attente; la surprise vient du cadrage, pas de la taille du lieu."},
+  {id:64,lat:41.8891,lng:12.485,prio:"special",label:"S4",name:"Trastevere souterrain de Santa Cecilia",desc:"Sous l'église de Santa Cecilia, des couches anciennes racontent un autre Rome, plus caché. Le lieu est particulièrement marquant pour les amateurs de strates historiques.",tip:"À privilégier si tu veux un site moins connu mais très riche; il complète bien une balade dans Trastevere."},
+  {id:65,lat:41.889,lng:12.4862,prio:"special",label:"S5",name:"Isola Tiberina, vue nocturne",desc:"L'île prend une atmosphère presque cinématographique le soir, entre ponts et reflets. C'est l'un des meilleurs micro-paysages urbains de Rome.",tip:"Passe après le coucher du soleil pour les reflets; les ponts offrent de très bonnes photos sans effort."},
+  {id:66,lat:41.8767,lng:12.4664,prio:"special",label:"S6",name:"Cimetière protestant",desc:"Jardin funéraire paisible et très beau, avec une ambiance rare à Rome. Il mêle végétation, silence et mémoire dans un cadre singulier.",tip:"À faire quand tu veux une pause calme; la lumière de matinée convient bien aux photos et à l'atmosphère."},
+  {id:67,lat:41.8893,lng:12.4967,prio:"special",label:"S7",name:"Basilique des Quatre-Saints-Couronnés",desc:"Ensemble romain massif, presque caché, avec un vrai sentiment de forteresse sacrée. C'est un lieu fort pour les amateurs d'églises atypiques.",tip:"Cherche l'accès sans te presser; le contraste entre extérieur austère et intérieur historique est la clé."},
+  {id:68,lat:41.898,lng:12.502,prio:"special",label:"S8",name:"Cloître de la basilique Saint-Jean-de-Latran",desc:"Espace paisible, très élégant, où l'architecture devient presque méditative. Il surprend par son calme à deux pas d'un grand axe urbain.",tip:"À faire si tu veux un moment de respiration; prends le temps de regarder les colonnes et les détails."},
+  {id:69,lat:41.88,lng:12.4828,prio:"special",label:"S9",name:"Murales d'Ostiense",desc:"Grand terrain d'art urbain à ciel ouvert, inattendu dans Rome. Les fresques géantes donnent une lecture contemporaine de la ville.",tip:"Promène-toi lentement et regarde au-dessus des commerces et garages; plusieurs œuvres se repèrent mieux en recul."},
+  {id:70,lat:41.884,lng:12.5013,prio:"special",label:"S10",name:"Arc de Drusus",desc:"Arc antique discret, coincé dans le tissu urbain près d'une artère moderne. Il illustre parfaitement la Rome archéologique cachée dans la ville.",tip:"À voir en passant vers San Giovanni; le lieu se lit surtout en comprenant son intégration au bâti."},
+  {id:71,lat:41.8979,lng:12.5107,prio:"special",label:"S11",name:"Basilique Saint-Jean-de-Latran, façade et place",desc:"Grande basilique souvent sous-estimée, avec une présence urbaine puissante. La place et la façade offrent une scène monumentale moins saturée que d'autres icônes.",tip:"Observe-la depuis la place plutôt que de filer directement à l'intérieur; la composition urbaine est un vrai atout."},
+  {id:72,lat:41.8922,lng:12.5002,prio:"special",label:"S12",name:"Domus et rues du Rione Monti",desc:"Autour des petites rues de Monti, Rome révèle des détails rares, cours, escaliers et traces antiques. C'est un terrain idéal pour les trouvailles spontanées.",tip:"Flâne sans itinéraire précis entre les rues étroites; c'est l'un des meilleurs secteurs pour les découvertes imprévues."}
+];
+
+// SPECIALS : reservations (sp, violet) et logement (air, bleu).
+// A remplir librement avec ton hebergement et tes reservations.
+// Exemple :
+// { lat:41.9, lng:12.49, prio:'air', label:'LOG', name:'Hotel ...', desc:'...', tip:'...' }
+const SPECIALS = [];
+
+// =============================================================
+// CONFIGURATION
+// =============================================================
+// Plan officiel ATAC en PDF non charge directement par L.imageOverlay.
+// Fallback : plan schematique a jour 2025 de Wikimedia Commons en PNG
+// genere via le service Special:FilePath. Si l'URL change, remplace ici.
+// Note : un plan schematique n'est pas geographiquement precis, les
+// positions des stations sont stylisees, la superposition est donc
+// indicative.
+const METRO_IMAGE_URL = 'https://commons.wikimedia.org/wiki/Special:FilePath/Roma_-_mappa_metropolitana_2025_%28schematica%29.svg?width=2000';
+const METRO_BOUNDS = [[41.820, 12.330], [41.990, 12.620]];
+const METRO_DEFAULT_OPACITY = 0.82;
+
+// Plan reseau de surface (tramway de Rome) en surimpression.
+// Wikimedia n'heberge pas de plan exhaustif des 383 lignes de bus de Rome.
+// Par defaut on charge la carte geographique du reseau tramway, qui couvre
+// les lignes de surface principales et est calee sur OpenStreetMap, donc
+// alignee avec la carte. Pour utiliser ta propre carte bus, depose une
+// image PNG sur ton repo GitHub Pages et remplace BUS_IMAGE_URL par son URL.
+const BUS_IMAGE_URL = 'https://commons.wikimedia.org/wiki/Special:FilePath/Roma_-_mappa_rete_tranviaria.svg?width=2000';
+const BUS_BOUNDS = [[41.820, 12.330], [41.990, 12.620]];
+const BUS_DEFAULT_OPACITY = 0.82;
+
+const COLORS = {
+  p0: '#c0392b',
+  p1: '#d35400',
+  p2: '#b7860b',
+  p3: '#27ae60',
+  special: '#1abc9c',
+  sp: '#6c3483',
+  air: '#1a5276'
+};
+
+const PRIO_LABELS = {
+  p0: 'Site majeur',
+  p1: 'Site fort',
+  p2: 'Site notable',
+  p3: 'Bonus',
+  special: 'Pepite',
+  sp: 'Reservation',
+  air: 'Logement'
+};
+
+// =============================================================
+// GENERATEURS DE MARQUEURS SVG (goutte, losange, etoile)
+// =============================================================
+function svgEscape(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function svgTeardrop(color, label) {
+  const fs = label.length >= 3 ? 9 : (label.length === 2 ? 11 : 13);
+  return '<svg class="marker-svg" width="32" height="42" viewBox="0 0 32 42" xmlns="http://www.w3.org/2000/svg">' +
+    '<path d="M16 1.5 C7.4 1.5 1.5 8 1.5 16 C1.5 26 16 40.5 16 40.5 C16 40.5 30.5 26 30.5 16 C30.5 8 24.6 1.5 16 1.5 Z" fill="' + color + '" stroke="#fff" stroke-width="2"/>' +
+    '<text x="16" y="21" text-anchor="middle" fill="#fff" font-size="' + fs + '" font-weight="700" font-family="DM Sans, sans-serif">' + svgEscape(label) + '</text>' +
+    '</svg>';
+}
+
+function svgDiamond(color, label) {
+  const fs = label.length >= 3 ? 8 : (label.length === 2 ? 10 : 12);
+  return '<svg class="marker-svg" width="34" height="34" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg">' +
+    '<path d="M17 2 L32 17 L17 32 L2 17 Z" fill="' + color + '" stroke="#fff" stroke-width="2"/>' +
+    '<text x="17" y="21" text-anchor="middle" fill="#fff" font-size="' + fs + '" font-weight="700" font-family="DM Sans, sans-serif">' + svgEscape(label) + '</text>' +
+    '</svg>';
+}
+
+function svgStar(color, label) {
+  const fs = label.length >= 3 ? 7 : (label.length === 2 ? 8 : 10);
+  return '<svg class="marker-svg" width="36" height="36" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">' +
+    '<polygon points="18,2 22.2,13.4 34,13.6 24.5,21 28.2,33 18,25.8 7.8,33 11.5,21 2,13.6 13.8,13.4" fill="' + color + '" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/>' +
+    '<text x="18" y="22" text-anchor="middle" fill="#fff" font-size="' + fs + '" font-weight="700" font-family="DM Sans, sans-serif">' + svgEscape(label) + '</text>' +
+    '</svg>';
+}
+
+function buildIcon(prio, label) {
+  let html, anchor, size;
+  if (prio === 'p0' || prio === 'p1' || prio === 'p2' || prio === 'p3') {
+    html = svgTeardrop(COLORS[prio], label);
+    size = [32, 42]; anchor = [16, 40];
+  } else if (prio === 'special') {
+    html = svgDiamond(COLORS.special, label);
+    size = [34, 34]; anchor = [17, 17];
+  } else if (prio === 'sp') {
+    html = svgStar(COLORS.sp, label);
+    size = [36, 36]; anchor = [18, 18];
+  } else if (prio === 'air') {
+    html = svgStar(COLORS.air, label);
+    size = [36, 36]; anchor = [18, 18];
+  } else {
+    html = svgTeardrop('#555', label);
+    size = [32, 42]; anchor = [16, 40];
+  }
+  return L.divIcon({
+    className: 'poi-divicon',
+    html: html,
+    iconSize: size,
+    iconAnchor: anchor,
+    popupAnchor: [0, -anchor[1]]
+  });
+}
+
+// =============================================================
+// INITIALISATION DE LA CARTE
+// =============================================================
+const map = L.map('map', {
+  zoomControl: true,
+  attributionControl: true,
+  tap: true,
+  zoomSnap: 0.5
+}).setView([41.9028, 12.4964], 13);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  minZoom: 11,
+  attribution: '&copy; OpenStreetMap'
+}).addTo(map);
+
+// =============================================================
+// AJOUT DES MARQUEURS POI
+// =============================================================
+function addPois(list) {
+  list.forEach(function(poi) {
+    if (typeof poi.lat !== 'number' || typeof poi.lng !== 'number') return;
+    const m = L.marker([poi.lat, poi.lng], {
+      icon: buildIcon(poi.prio, poi.label),
+      riseOnHover: true,
+      keyboard: false
+    });
+    m.on('click', function(e) {
+      if (e && e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
+      openPoi(poi);
+    });
+    m.addTo(map);
+  });
+}
+addPois(POIS);
+addPois(SPECIALS);
+
+// =============================================================
+// PANNEAU POI (fiche basse)
+// =============================================================
+const panel = document.getElementById('poi-panel');
+const badge = document.getElementById('poi-badge');
+const nameEl = document.getElementById('poi-name');
+const descEl = document.getElementById('poi-desc');
+const tipEl = document.getElementById('poi-tip');
+
+function openPoi(poi) {
+  badge.textContent = PRIO_LABELS[poi.prio] || 'Lieu';
+  badge.style.background = COLORS[poi.prio] || '#555';
+  nameEl.textContent = poi.name;
+  descEl.textContent = poi.desc || '';
+  tipEl.textContent = poi.tip ? ('Conseil : ' + poi.tip) : '';
+  tipEl.style.display = poi.tip ? 'block' : 'none';
+  panel.classList.add('open');
+  panel.setAttribute('aria-hidden', 'false');
+}
+
+function closePoi() {
+  panel.classList.remove('open');
+  panel.setAttribute('aria-hidden', 'true');
+}
+
+document.getElementById('poi-close').addEventListener('click', closePoi);
+map.on('click', closePoi);
+
+// =============================================================
+// NOTIFICATIONS TOAST
+// =============================================================
+const toastEl = document.getElementById('toast');
+let toastTimer = null;
+function toast(msg) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(function() {
+    toastEl.classList.remove('show');
+  }, 3200);
+}
+
+// =============================================================
+// SUIVI GPS (watchPosition haute precision)
+// =============================================================
+let gpsWatchId = null;
+let gpsMarker = null;
+let gpsCircle = null;
+let firstFix = true;
+const btnGps = document.getElementById('btn-gps');
+
+function gpsStop() {
+  if (gpsWatchId !== null) {
+    try { navigator.geolocation.clearWatch(gpsWatchId); } catch (e) {}
+    gpsWatchId = null;
+  }
+  if (gpsMarker) { map.removeLayer(gpsMarker); gpsMarker = null; }
+  if (gpsCircle) { map.removeLayer(gpsCircle); gpsCircle = null; }
+  btnGps.textContent = 'GPS';
+  btnGps.classList.remove('active');
+}
+
+function gpsToggle() {
+  if (gpsWatchId !== null) {
+    gpsStop();
+    toast('Suivi GPS desactive');
+    return;
+  }
+  if (!('geolocation' in navigator)) {
+    toast('GPS non disponible sur cet appareil');
+    return;
+  }
+  firstFix = true;
+  btnGps.textContent = 'Suivi ON';
+  btnGps.classList.add('active');
+  toast('Acquisition de la position...');
+
+  gpsWatchId = navigator.geolocation.watchPosition(
+    function(pos) {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      const acc = Math.max(5, pos.coords.accuracy || 25);
+      if (!gpsMarker) {
+        const dotIcon = L.divIcon({
+          className: 'gps-divicon',
+          html: '<div class="gps-pulse"></div>',
+          iconSize: [22, 22],
+          iconAnchor: [11, 11]
+        });
+        gpsMarker = L.marker([lat, lng], { icon: dotIcon, interactive: false, keyboard: false }).addTo(map);
+        gpsCircle = L.circle([lat, lng], {
+          radius: acc,
+          color: '#2980b9',
+          weight: 1,
+          fillColor: '#2980b9',
+          fillOpacity: 0.12,
+          interactive: false
+        }).addTo(map);
+      } else {
+        gpsMarker.setLatLng([lat, lng]);
+        gpsCircle.setLatLng([lat, lng]);
+        gpsCircle.setRadius(acc);
+      }
+      if (firstFix) {
+        map.setView([lat, lng], Math.max(map.getZoom(), 16));
+        firstFix = false;
+        toast('Position acquise');
+      }
+    },
+    function(err) {
+      let m;
+      if (err.code === 1) m = 'GPS : permission refusee';
+      else if (err.code === 2) m = 'Position indisponible';
+      else if (err.code === 3) m = 'GPS : delai depasse';
+      else m = 'Erreur GPS';
+      toast(m);
+      gpsStop();
+    },
+    { enableHighAccuracy: true, maximumAge: 4000, timeout: 20000 }
+  );
+}
+
+btnGps.addEventListener('click', gpsToggle);
+
+// =============================================================
+// SURIMPRESSIONS PLANS (metro et bus) via L.imageOverlay
+// =============================================================
+let metroLayer = null;
+let busLayer = null;
+
+const btnMetro = document.getElementById('btn-metro');
+const btnBus = document.getElementById('btn-bus');
+const opPanel = document.getElementById('op-panel');
+
+const opRowMetro = document.getElementById('op-row-metro');
+const opInputMetro = document.getElementById('op-input-metro');
+const opValueMetro = document.getElementById('op-value-metro');
+
+const opRowBus = document.getElementById('op-row-bus');
+const opInputBus = document.getElementById('op-input-bus');
+const opValueBus = document.getElementById('op-value-bus');
+
+// Affiche le panneau d'opacite global tant qu'au moins une surimpression
+// est active, et n'y montre que les lignes correspondant aux overlays actifs.
+function updateOpPanel() {
+  const anyActive = (metroLayer !== null) || (busLayer !== null);
+  opPanel.classList.toggle('show', anyActive);
+  opRowMetro.classList.toggle('show', metroLayer !== null);
+  opRowBus.classList.toggle('show', busLayer !== null);
+}
+
+// ----- METRO -----
+function metroHide() {
+  if (metroLayer) {
+    try { map.removeLayer(metroLayer); } catch (e) {}
+    metroLayer = null;
+  }
+  btnMetro.textContent = 'Metro';
+  btnMetro.classList.remove('active');
+  updateOpPanel();
+}
+
+function metroShow() {
+  metroLayer = L.imageOverlay(METRO_IMAGE_URL, METRO_BOUNDS, {
+    opacity: METRO_DEFAULT_OPACITY,
+    interactive: false,
+    crossOrigin: true,
+    alt: 'Plan du metro de Rome'
+  });
+  metroLayer.on('error', function() {
+    toast('Echec du chargement du plan metro');
+    metroHide();
+  });
+  metroLayer.addTo(map);
+  if (metroLayer && metroLayer.bringToFront) metroLayer.bringToFront();
+  btnMetro.textContent = 'Metro ON';
+  btnMetro.classList.add('active');
+  opInputMetro.value = METRO_DEFAULT_OPACITY;
+  opValueMetro.textContent = Math.round(METRO_DEFAULT_OPACITY * 100) + '%';
+  updateOpPanel();
+}
+
+function metroToggle() {
+  if (metroLayer) {
+    metroHide();
+    toast('Plan metro masque');
+  } else {
+    metroShow();
+    toast('Plan metro affiche');
+  }
+}
+
+btnMetro.addEventListener('click', metroToggle);
+
+opInputMetro.addEventListener('input', function() {
+  const v = parseFloat(opInputMetro.value);
+  if (metroLayer) metroLayer.setOpacity(v);
+  opValueMetro.textContent = Math.round(v * 100) + '%';
+});
+
+// ----- BUS -----
+function busHide() {
+  if (busLayer) {
+    try { map.removeLayer(busLayer); } catch (e) {}
+    busLayer = null;
+  }
+  btnBus.textContent = 'Bus';
+  btnBus.classList.remove('active');
+  updateOpPanel();
+}
+
+function busShow() {
+  busLayer = L.imageOverlay(BUS_IMAGE_URL, BUS_BOUNDS, {
+    opacity: BUS_DEFAULT_OPACITY,
+    interactive: false,
+    crossOrigin: true,
+    alt: 'Plan du reseau bus et tramway de Rome'
+  });
+  busLayer.on('error', function() {
+    toast('Echec du chargement du plan bus');
+    busHide();
+  });
+  busLayer.addTo(map);
+  // Met le bus au-dessus du metro pour que les deux soient lisibles
+  // si activees simultanement (le dernier active passe au-dessus).
+  if (busLayer && busLayer.bringToFront) busLayer.bringToFront();
+  btnBus.textContent = 'Bus ON';
+  btnBus.classList.add('active');
+  opInputBus.value = BUS_DEFAULT_OPACITY;
+  opValueBus.textContent = Math.round(BUS_DEFAULT_OPACITY * 100) + '%';
+  updateOpPanel();
+}
+
+function busToggle() {
+  if (busLayer) {
+    busHide();
+    toast('Plan bus masque');
+  } else {
+    busShow();
+    toast('Plan bus affiche');
+  }
+}
+
+btnBus.addEventListener('click', busToggle);
+
+opInputBus.addEventListener('input', function() {
+  const v = parseFloat(opInputBus.value);
+  if (busLayer) busLayer.setOpacity(v);
+  opValueBus.textContent = Math.round(v * 100) + '%';
+});
+
+// =============================================================
+// AJUSTEMENT iOS : recalcul de la taille de la carte au resize
+// =============================================================
+let resizeTimer = null;
+window.addEventListener('resize', function() {
+  if (resizeTimer) clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(function() { map.invalidateSize(); }, 150);
+});
+window.addEventListener('orientationchange', function() {
+  setTimeout(function() { map.invalidateSize(); }, 350);
+});
+
+// Force un premier recalcul apres montage du DOM
+setTimeout(function() { map.invalidateSize(); }, 100);
+</script>
+</body>
+</html>

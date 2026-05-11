@@ -368,26 +368,40 @@ const POIS = [
 const SPECIALS = [];
 
 // =============================================================
-// CONFIGURATION
+// CONFIGURATION TRANSPORT (Overpass API)
 // =============================================================
-// URLs directes vers les PNG rasterises sur upload.wikimedia.org
-// (chemins stables, pas de redirection, pas besoin de CORS).
-// Le plan metro est schematique (positions stylisees, superposition indicative).
-// Le plan bus est le reseau tramway geographique OSM-cale (plus precis).
-// Pour utiliser ta propre image, depose un PNG sur ton repo GitHub Pages
-// et remplace l'URL correspondante.
-const METRO_IMAGE_URL = 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Roma_-_mappa_metropolitana_2025_%28schematica%29.svg/1800px-Roma_-_mappa_metropolitana_2025_%28schematica%29.svg.png';
-const METRO_BOUNDS = [[41.820, 12.330], [41.990, 12.620]];
-const METRO_DEFAULT_OPACITY = 0.82;
+// Les lignes de metro et de bus/tram sont chargees en temps reel
+// depuis l'API Overpass (donnees OpenStreetMap). Aucune image externe,
+// aucun probleme CORS ni de hotlink. Les lignes sont dessinees en
+// polylignes vectorielles directement sur la carte.
+const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+// Bounding box couvrant le Grand Rome
+const OVERPASS_BBOX = '41.78,12.33,42.02,12.65';
+// Timeout reseau pour la requete Overpass (ms)
+const OVERPASS_FETCH_MS = 30000;
 
-// Le plan de tram/bus geographique est bien aligne sur OpenStreetMap.
-// Pour utiliser ta propre carte bus, remplace BUS_IMAGE_URL.
-const BUS_IMAGE_URL = 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/Roma_-_mappa_rete_tranviaria.svg/1800px-Roma_-_mappa_rete_tranviaria.svg.png';
-const BUS_BOUNDS = [[41.820, 12.330], [41.990, 12.620]];
-const BUS_DEFAULT_OPACITY = 0.82;
+// Requete metro : lignes A, B, B1, C du metro de Rome
+const METRO_QUERY = '[out:json][timeout:28][bbox:' + OVERPASS_BBOX + '];' +
+  'relation["route"="subway"];out geom;';
 
-// Delai max d'attente de chargement d'image avant abandon (ms).
-const OVERLAY_TIMEOUT_MS = 12000;
+// Requete bus/tram : lignes de tramway (2,3,5,8,14,19) + minibus electriques
+// du centre historique (116,117,119) qui desservent les sites touristiques.
+const BUS_QUERY = '[out:json][timeout:28][bbox:' + OVERPASS_BBOX + '];' +
+  '(relation["route"="tram"];relation["route"="trolleybus"];);out geom;';
+
+// Couleurs officielles des lignes de metro ATAC
+const METRO_LINE_COLORS = { 'A': '#F4821F', 'B': '#00A650', 'B1': '#00A650', 'C': '#5DB446' };
+function metroLineColor(ref) { return METRO_LINE_COLORS[ref] || '#888888'; }
+
+// Palette pour les lignes de tram/bus (couleur stable par hash du ref)
+const TRAM_PALETTE = ['#c0392b', '#2980b9', '#27ae60', '#8e44ad', '#e67e22', '#16a085', '#2c3e50'];
+function tramLineColor(ref) {
+  var h = 0;
+  for (var i = 0; i < ref.length; i++) h = (h * 31 + ref.charCodeAt(i)) & 0xffff;
+  return TRAM_PALETTE[h % TRAM_PALETTE.length];
+}
+
+const DEFAULT_OVERLAY_OPACITY = 0.85;
 
 const COLORS = {
   p0: '#c0392b',
@@ -629,7 +643,7 @@ function gpsToggle() {
 btnGps.addEventListener('click', gpsToggle);
 
 // =============================================================
-// SURIMPRESSIONS PLANS (metro et bus) via L.imageOverlay
+// SURIMPRESSIONS TRANSPORT via Overpass API (vectoriel OSM)
 // =============================================================
 let metroLayer = null;
 let busLayer = null;
@@ -646,120 +660,159 @@ const opRowBus = document.getElementById('op-row-bus');
 const opInputBus = document.getElementById('op-input-bus');
 const opValueBus = document.getElementById('op-value-bus');
 
-// Affiche le panneau d'opacite global tant qu'au moins une surimpression
-// est active, et n'y montre que les lignes correspondant aux overlays actifs.
 function updateOpPanel() {
-  const anyActive = (metroLayer !== null) || (busLayer !== null);
+  var anyActive = (metroLayer !== null) || (busLayer !== null);
   opPanel.classList.toggle('show', anyActive);
   opRowMetro.classList.toggle('show', metroLayer !== null);
   opRowBus.classList.toggle('show', busLayer !== null);
 }
 
+// Applique l'opacite a toutes les polylignes d'un layerGroup
+function setLayerGroupOpacity(group, v) {
+  if (!group) return;
+  group.eachLayer(function(l) {
+    if (l.setStyle) l.setStyle({ opacity: v, fillOpacity: v * 0.2 });
+  });
+}
+
+// Charge les lignes depuis Overpass et retourne un layerGroup via callbacks
+function loadOverpassLines(query, colorFn, lineWeight, onSuccess, onError) {
+  var url = OVERPASS_URL + '?data=' + encodeURIComponent(query);
+  var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  var timer = setTimeout(function() {
+    if (ctrl) ctrl.abort();
+    onError(new Error('Delai depasse'));
+  }, OVERPASS_FETCH_MS);
+
+  fetch(url, ctrl ? { signal: ctrl.signal } : {})
+    .then(function(r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    })
+    .then(function(data) {
+      clearTimeout(timer);
+      var group = L.layerGroup();
+      var drawn = 0;
+      (data.elements || []).forEach(function(el) {
+        if (el.type !== 'relation') return;
+        var ref = (el.tags && (el.tags.ref || el.tags.name)) || '';
+        var color = colorFn(ref);
+        (el.members || []).forEach(function(m) {
+          if (m.type === 'way' && m.geometry && m.geometry.length > 1) {
+            var latlngs = m.geometry.map(function(p) { return [p.lat, p.lon]; });
+            L.polyline(latlngs, {
+              color: color,
+              weight: lineWeight,
+              opacity: DEFAULT_OVERLAY_OPACITY,
+              smoothFactor: 1,
+              interactive: false
+            }).addTo(group);
+            drawn++;
+          }
+        });
+      });
+      if (drawn === 0) { onError(new Error('Aucune geometrie recue')); return; }
+      onSuccess(group);
+    })
+    .catch(function(e) {
+      clearTimeout(timer);
+      onError(e);
+    });
+}
+
 // ----- METRO -----
 function metroHide() {
-  if (metroLayer) {
-    try { map.removeLayer(metroLayer); } catch (e) {}
-    metroLayer = null;
-  }
+  if (metroLayer) { try { map.removeLayer(metroLayer); } catch(e) {} metroLayer = null; }
   btnMetro.textContent = 'Metro';
   btnMetro.classList.remove('active');
   updateOpPanel();
 }
 
 function metroShow() {
-  metroLayer = L.imageOverlay(METRO_IMAGE_URL, METRO_BOUNDS, {
-    opacity: METRO_DEFAULT_OPACITY,
-    interactive: false,
-    alt: 'Plan du metro de Rome'
-  });
-  // Timeout de securite : si l'image ne charge pas en OVERLAY_TIMEOUT_MS,
-  // on abandonne proprement (evite un etat "actif sans image").
-  let metroTimer = setTimeout(function() {
-    if (metroLayer) { toast('Plan metro : delai depasse'); metroHide(); }
-  }, OVERLAY_TIMEOUT_MS);
-  metroLayer.on('load', function() { clearTimeout(metroTimer); });
-  metroLayer.on('error', function() {
-    clearTimeout(metroTimer);
-    toast('Echec du chargement du plan metro');
-    metroHide();
-  });
-  metroLayer.addTo(map);
-  if (metroLayer && metroLayer.bringToFront) metroLayer.bringToFront();
-  btnMetro.textContent = 'Metro ON';
+  btnMetro.textContent = 'Metro...';
   btnMetro.classList.add('active');
-  opInputMetro.value = METRO_DEFAULT_OPACITY;
-  opValueMetro.textContent = Math.round(METRO_DEFAULT_OPACITY * 100) + '%';
-  updateOpPanel();
+  btnMetro.disabled = true;
+  toast('Chargement metro...');
+  loadOverpassLines(
+    METRO_QUERY,
+    metroLineColor,
+    5,
+    function(group) {
+      metroLayer = group;
+      metroLayer.addTo(map);
+      btnMetro.textContent = 'Metro ON';
+      btnMetro.disabled = false;
+      opInputMetro.value = DEFAULT_OVERLAY_OPACITY;
+      opValueMetro.textContent = Math.round(DEFAULT_OVERLAY_OPACITY * 100) + '%';
+      updateOpPanel();
+      toast('Lignes metro affichees');
+    },
+    function(err) {
+      btnMetro.textContent = 'Metro';
+      btnMetro.classList.remove('active');
+      btnMetro.disabled = false;
+      toast('Erreur metro : ' + (err.message || 'reseau'));
+    }
+  );
 }
 
 function metroToggle() {
-  if (metroLayer) {
-    metroHide();
-    toast('Plan metro masque');
-  } else {
-    metroShow();
-    toast('Plan metro affiche');
-  }
+  if (metroLayer) { metroHide(); toast('Metro masque'); } else { metroShow(); }
 }
 
 btnMetro.addEventListener('click', metroToggle);
 
 opInputMetro.addEventListener('input', function() {
-  const v = parseFloat(opInputMetro.value);
-  if (metroLayer) metroLayer.setOpacity(v);
+  var v = parseFloat(opInputMetro.value);
+  setLayerGroupOpacity(metroLayer, v);
   opValueMetro.textContent = Math.round(v * 100) + '%';
 });
 
-// ----- BUS -----
+// ----- BUS / TRAM -----
 function busHide() {
-  if (busLayer) {
-    try { map.removeLayer(busLayer); } catch (e) {}
-    busLayer = null;
-  }
+  if (busLayer) { try { map.removeLayer(busLayer); } catch(e) {} busLayer = null; }
   btnBus.textContent = 'Bus';
   btnBus.classList.remove('active');
   updateOpPanel();
 }
 
 function busShow() {
-  busLayer = L.imageOverlay(BUS_IMAGE_URL, BUS_BOUNDS, {
-    opacity: BUS_DEFAULT_OPACITY,
-    interactive: false,
-    alt: 'Plan du reseau bus et tramway de Rome'
-  });
-  let busTimer = setTimeout(function() {
-    if (busLayer) { toast('Plan bus : delai depasse'); busHide(); }
-  }, OVERLAY_TIMEOUT_MS);
-  busLayer.on('load', function() { clearTimeout(busTimer); });
-  busLayer.on('error', function() {
-    clearTimeout(busTimer);
-    toast('Echec du chargement du plan bus');
-    busHide();
-  });
-  busLayer.addTo(map);
-  if (busLayer && busLayer.bringToFront) busLayer.bringToFront();
-  btnBus.textContent = 'Bus ON';
+  btnBus.textContent = 'Bus...';
   btnBus.classList.add('active');
-  opInputBus.value = BUS_DEFAULT_OPACITY;
-  opValueBus.textContent = Math.round(BUS_DEFAULT_OPACITY * 100) + '%';
-  updateOpPanel();
+  btnBus.disabled = true;
+  toast('Chargement tram/bus...');
+  loadOverpassLines(
+    BUS_QUERY,
+    tramLineColor,
+    4,
+    function(group) {
+      busLayer = group;
+      busLayer.addTo(map);
+      btnBus.textContent = 'Bus ON';
+      btnBus.disabled = false;
+      opInputBus.value = DEFAULT_OVERLAY_OPACITY;
+      opValueBus.textContent = Math.round(DEFAULT_OVERLAY_OPACITY * 100) + '%';
+      updateOpPanel();
+      toast('Lignes tram/bus affichees');
+    },
+    function(err) {
+      btnBus.textContent = 'Bus';
+      btnBus.classList.remove('active');
+      btnBus.disabled = false;
+      toast('Erreur bus : ' + (err.message || 'reseau'));
+    }
+  );
 }
 
 function busToggle() {
-  if (busLayer) {
-    busHide();
-    toast('Plan bus masque');
-  } else {
-    busShow();
-    toast('Plan bus affiche');
-  }
+  if (busLayer) { busHide(); toast('Bus masque'); } else { busShow(); }
 }
 
 btnBus.addEventListener('click', busToggle);
 
 opInputBus.addEventListener('input', function() {
-  const v = parseFloat(opInputBus.value);
-  if (busLayer) busLayer.setOpacity(v);
+  var v = parseFloat(opInputBus.value);
+  setLayerGroupOpacity(busLayer, v);
   opValueBus.textContent = Math.round(v * 100) + '%';
 });
 

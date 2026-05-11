@@ -370,25 +370,24 @@ const SPECIALS = [];
 // =============================================================
 // CONFIGURATION
 // =============================================================
-// Plan officiel ATAC en PDF non charge directement par L.imageOverlay.
-// Fallback : plan schematique a jour 2025 de Wikimedia Commons en PNG
-// genere via le service Special:FilePath. Si l'URL change, remplace ici.
-// Note : un plan schematique n'est pas geographiquement precis, les
-// positions des stations sont stylisees, la superposition est donc
-// indicative.
-const METRO_IMAGE_URL = 'https://commons.wikimedia.org/wiki/Special:FilePath/Roma_-_mappa_metropolitana_2025_%28schematica%29.svg?width=2000';
+// URLs directes vers les PNG rasterises sur upload.wikimedia.org
+// (chemins stables, pas de redirection, pas besoin de CORS).
+// Le plan metro est schematique (positions stylisees, superposition indicative).
+// Le plan bus est le reseau tramway geographique OSM-cale (plus precis).
+// Pour utiliser ta propre image, depose un PNG sur ton repo GitHub Pages
+// et remplace l'URL correspondante.
+const METRO_IMAGE_URL = 'https://upload.wikimedia.org/wikipedia/commons/thumb/2/29/Roma_-_mappa_metropolitana_2025_%28schematica%29.svg/1800px-Roma_-_mappa_metropolitana_2025_%28schematica%29.svg.png';
 const METRO_BOUNDS = [[41.820, 12.330], [41.990, 12.620]];
 const METRO_DEFAULT_OPACITY = 0.82;
 
-// Plan reseau de surface (tramway de Rome) en surimpression.
-// Wikimedia n'heberge pas de plan exhaustif des 383 lignes de bus de Rome.
-// Par defaut on charge la carte geographique du reseau tramway, qui couvre
-// les lignes de surface principales et est calee sur OpenStreetMap, donc
-// alignee avec la carte. Pour utiliser ta propre carte bus, depose une
-// image PNG sur ton repo GitHub Pages et remplace BUS_IMAGE_URL par son URL.
-const BUS_IMAGE_URL = 'https://commons.wikimedia.org/wiki/Special:FilePath/Roma_-_mappa_rete_tranviaria.svg?width=2000';
+// Le plan de tram/bus geographique est bien aligne sur OpenStreetMap.
+// Pour utiliser ta propre carte bus, remplace BUS_IMAGE_URL.
+const BUS_IMAGE_URL = 'https://upload.wikimedia.org/wikipedia/commons/thumb/0/0c/Roma_-_mappa_rete_tranviaria.svg/1800px-Roma_-_mappa_rete_tranviaria.svg.png';
 const BUS_BOUNDS = [[41.820, 12.330], [41.990, 12.620]];
 const BUS_DEFAULT_OPACITY = 0.82;
+
+// Delai max d'attente de chargement d'image avant abandon (ms).
+const OVERLAY_TIMEOUT_MS = 12000;
 
 const COLORS = {
   p0: '#c0392b',
@@ -671,10 +670,16 @@ function metroShow() {
   metroLayer = L.imageOverlay(METRO_IMAGE_URL, METRO_BOUNDS, {
     opacity: METRO_DEFAULT_OPACITY,
     interactive: false,
-    crossOrigin: true,
     alt: 'Plan du metro de Rome'
   });
+  // Timeout de securite : si l'image ne charge pas en OVERLAY_TIMEOUT_MS,
+  // on abandonne proprement (evite un etat "actif sans image").
+  let metroTimer = setTimeout(function() {
+    if (metroLayer) { toast('Plan metro : delai depasse'); metroHide(); }
+  }, OVERLAY_TIMEOUT_MS);
+  metroLayer.on('load', function() { clearTimeout(metroTimer); });
   metroLayer.on('error', function() {
+    clearTimeout(metroTimer);
     toast('Echec du chargement du plan metro');
     metroHide();
   });
@@ -720,16 +725,18 @@ function busShow() {
   busLayer = L.imageOverlay(BUS_IMAGE_URL, BUS_BOUNDS, {
     opacity: BUS_DEFAULT_OPACITY,
     interactive: false,
-    crossOrigin: true,
     alt: 'Plan du reseau bus et tramway de Rome'
   });
+  let busTimer = setTimeout(function() {
+    if (busLayer) { toast('Plan bus : delai depasse'); busHide(); }
+  }, OVERLAY_TIMEOUT_MS);
+  busLayer.on('load', function() { clearTimeout(busTimer); });
   busLayer.on('error', function() {
+    clearTimeout(busTimer);
     toast('Echec du chargement du plan bus');
     busHide();
   });
   busLayer.addTo(map);
-  // Met le bus au-dessus du metro pour que les deux soient lisibles
-  // si activees simultanement (le dernier active passe au-dessus).
   if (busLayer && busLayer.bringToFront) busLayer.bringToFront();
   btnBus.textContent = 'Bus ON';
   btnBus.classList.add('active');

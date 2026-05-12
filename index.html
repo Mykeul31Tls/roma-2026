@@ -663,31 +663,6 @@ btnGps.addEventListener('click', gpsToggle);
 // =============================================================
 // SURIMPRESSIONS TRANSPORT via Overpass API (vectoriel OSM)
 // =============================================================
-let metroLayer = null;
-let busLayer = null;
-
-const btnMetro = document.getElementById('btn-metro');
-const btnBus = document.getElementById('btn-bus');
-const opPanel = document.getElementById('op-panel');
-
-const opRowMetro = document.getElementById('op-row-metro');
-const opInputMetro = document.getElementById('op-input-metro');
-const opValueMetro = document.getElementById('op-value-metro');
-
-const opRowBus = document.getElementById('op-row-bus');
-const opInputBus = document.getElementById('op-input-bus');
-const opValueBus = document.getElementById('op-value-bus');
-
-function updateOpPanel() {
-  var anyActive = (metroLayer !== null) || (busLayer !== null);
-  opPanel.classList.toggle('show', anyActive);
-  opRowMetro.classList.toggle('show', metroLayer !== null);
-  opRowBus.classList.toggle('show', busLayer !== null);
-}
-
-// =============================================================
-// SURIMPRESSIONS TRANSPORT via Overpass API (vectoriel OSM)
-// =============================================================
 let metroLayer     = null;
 let busLayer       = null;
 let metroRelations = [];   // [{allCoords, label, color}] pour labels dynamiques

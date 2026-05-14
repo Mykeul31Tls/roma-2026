@@ -74,17 +74,28 @@ html, body { height: 100%; width: 100%; overflow: hidden; font-family: 'DM Sans'
 
 #map { flex: 1; position: relative; z-index: 1; min-height: 0; }
 
-#legend {
+#footer {
   background: #1c1108;
-  color: #fdf5e6;
-  padding: 7px 8px calc(7px + env(safe-area-inset-bottom)) 8px;
+  border-top: 1px solid #4a1010;
+  z-index: 500;
+}
+#legend {
+  padding: 7px 8px 4px 8px;
   display: flex;
   align-items: center;
   justify-content: space-around;
   gap: 4px;
   font-size: 10.5px;
-  z-index: 500;
-  border-top: 1px solid #4a1010;
+  color: #fdf5e6;
+}
+#copyright {
+  padding: 2px 8px calc(5px + env(safe-area-inset-bottom)) 8px;
+  text-align: center;
+  font-size: 9px;
+  color: rgba(253,245,230,0.40);
+  font-family: 'DM Sans', sans-serif;
+  letter-spacing: 0.2px;
+  line-height: 1.3;
 }
 .lg { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
 .lg-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; border: 1px solid rgba(255,255,255,0.3); }
@@ -267,12 +278,15 @@ html, body { height: 100%; width: 100%; overflow: hidden; font-family: 'DM Sans'
     </div>
   </div>
   <div id="map"></div>
-  <div id="legend">
-    <div class="lg"><span class="lg-dot" style="background:#c0392b"></span>Majeurs</div>
-    <div class="lg"><span class="lg-dot" style="background:#d35400"></span>Forts</div>
-    <div class="lg"><span class="lg-dot" style="background:#b7860b"></span>Notables</div>
-    <div class="lg"><span class="lg-dot" style="background:#27ae60"></span>Bonus</div>
-    <div class="lg"><span class="lg-diam" style="background:#1abc9c"></span>Speciaux</div>
+  <div id="footer">
+    <div id="legend">
+      <div class="lg"><span class="lg-dot" style="background:#c0392b"></span>Majeurs</div>
+      <div class="lg"><span class="lg-dot" style="background:#d35400"></span>Forts</div>
+      <div class="lg"><span class="lg-dot" style="background:#b7860b"></span>Notables</div>
+      <div class="lg"><span class="lg-dot" style="background:#27ae60"></span>Bonus</div>
+      <div class="lg"><span class="lg-diam" style="background:#1abc9c"></span>Speciaux</div>
+    </div>
+    <div id="copyright">Roma@2026 - Copyright &copy; 2026 MBO | Mind Bolt Objects</div>
   </div>
 </div>
 

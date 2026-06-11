@@ -269,7 +269,7 @@ html, body { height: 100%; width: 100%; overflow: hidden; font-family: 'DM Sans'
   <div id="header">
     <div id="title-block">
       <div id="title">ROMA - La Città Eterna</div>
-      <div id="subtitle">Guide - [DATES]</div>
+      <div id="subtitle">Guide - 13-16 Juin 2026</div>
     </div>
     <div id="buttons">
       <button class="hbtn gps" id="btn-gps" type="button">GPS</button>
@@ -397,7 +397,29 @@ const POIS = [
 // A remplir librement avec ton hebergement et tes reservations.
 // Exemple :
 // { lat:41.9, lng:12.49, prio:'air', label:'LOG', name:'Hotel ...', desc:'...', tip:'...' }
-const SPECIALS = [];
+const SPECIALS = [
+  {
+    lat: 41.8975, lng: 12.4794,
+    prio: 'air', label: 'H1',
+    name: 'Cozy Luxury Room Pantheon',
+    desc: 'Premier hébergement du séjour. Via del Piè di Marmo, 16 — en plein cœur historique, à deux pas du Panthéon.',
+    tip: 'Check-in dès votre arrivée à Rome. Position idéale pour rayonner à pied vers le Panthéon, Navone et le Campo de\'Fiori.'
+  },
+  {
+    lat: 41.9064, lng: 12.4535,
+    prio: 'sp', label: 'VAT',
+    name: 'Musées du Vatican — RDV 13/06 10h30',
+    desc: 'Rendez-vous le 13 juin à 10h30 pour la visite des Musées du Vatican. Entrée : Viale Vaticano, 00120 Città del Vaticano.',
+    tip: 'Arriver 10 minutes avant. L\'entrée des groupes/réservations est distincte de la file générale — repérer le panneau "Booking".'
+  },
+  {
+    lat: 41.8762, lng: 12.5143,
+    prio: 'air', label: 'H2',
+    name: 'Airbnb La Spezia',
+    desc: 'Second hébergement à partir du 14 juin à 16h00. V. La Spezia, 35, 00182 Roma.',
+    tip: 'Check-in à partir de 16h00 le 14 juin. Quartier Appio-Latino, bien desservi par les transports.'
+  }
+];
 
 // =============================================================
 // CONFIGURATION TRANSPORT (Overpass API)
